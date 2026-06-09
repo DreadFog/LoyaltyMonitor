@@ -6,11 +6,9 @@
 {% endblock %}
 
 {% block content %}
-{# ── Pass data to inline JS ── #}
 <script>
-  const CUSTOMER_ID   = "{{ customer.id }}";
-  const MAX_POINTS    = {{ max_points }};
-  const ALL_REWARDS   = {{ config.rewards | tojson }};
+  const CUSTOMER_ID  = "{{ customer.id }}";
+  const CONFIG_TRACKS = {{ config_tracks | tojson }};
 </script>
 
 <div class="row justify-content-center">
@@ -25,7 +23,7 @@
 
     {# ── Customer Header ── #}
     <div class="customer-header mb-3">
-      <div class="d-flex justify-content-between align-items-start">
+      <div class="d-flex justify-content-between align-items-start mb-3">
         <div>
           <h3 class="mb-1 fw-bold">{{ customer.display_name }}</h3>
           {% if customer.email %}
@@ -35,37 +33,33 @@
             <i class="fas fa-id-card me-1"></i>{{ customer.id }}
           </div>
         </div>
-        <a
-          href="{{ url_for('customer.customer_qr', customer_id=customer.id) }}"
-          target="_blank"
-          class="btn btn-light btn-sm flex-shrink-0"
-          title="Open QR code"
-        >
+        <a href="{{ url_for('customer.customer_qr', customer_id=customer.id) }}"
+           target="_blank" class="btn btn-light btn-sm flex-shrink-0" title="Open QR code">
           <i class="fas fa-qrcode fa-lg"></i>
         </a>
       </div>
 
-      {# Points & progress #}
-      <div class="d-flex align-items-baseline mt-3 mb-1 gap-2">
-        <span class="points-value" id="points-value">{{ customer.points }}</span>
-        <span class="points-label">pts</span>
-      </div>
-
-      <div id="status-message" class="status-message mb-2">{{ status_message }}</div>
-
-      <div class="progress loyalty-progress" role="progressbar"
-           aria-valuenow="{{ customer.points }}" aria-valuemin="0" aria-valuemax="{{ max_points }}">
-        <div
-          class="progress-bar bg-success progress-bar-striped"
-          id="loyalty-progress"
-          style="width: {{ progress_pct }}%"
-          data-max-points="{{ max_points }}"
-        ></div>
-      </div>
-      <div class="d-flex justify-content-between mt-1">
-        <small class="opacity-60">0</small>
-        <small class="opacity-60">{{ max_points }} pts → {{ config.rewards[0].name if config.rewards else 'reward' }}</small>
-      </div>
+      {# ── Per-track progress rows ── #}
+      {% for track in config_tracks %}
+        {% set ts = track_status[track.id] %}
+        <div class="track-progress-block {% if not loop.last %}mb-3{% endif %}" id="track-block-{{ track.id }}">
+          <div class="d-flex justify-content-between align-items-center mb-1">
+            <span class="fw-semibold opacity-90">{{ track.name }}</span>
+            <span>
+              <span class="fw-bold fs-5" id="pts-{{ track.id }}">{{ ts.points }}</span>
+              <span class="opacity-60 small"> / {{ ts.points_required }}</span>
+            </span>
+          </div>
+          <div class="status-message mb-2" id="status-{{ track.id }}">{{ ts.message }}</div>
+          <div class="progress loyalty-progress" role="progressbar"
+               aria-valuenow="{{ ts.points }}" aria-valuemin="0" aria-valuemax="{{ ts.points_required }}">
+            <div class="progress-bar bg-success progress-bar-striped"
+                 id="progress-{{ track.id }}"
+                 style="width: {{ ts.progress_pct }}%"></div>
+          </div>
+        </div>
+        {% if not loop.last %}<hr class="opacity-25 my-2">{% endif %}
+      {% endfor %}
     </div>
 
     {# ── Add-to-wallet section ── #}
@@ -76,30 +70,18 @@
       <div class="card-body">
         <p class="text-muted small mb-3">
           Show this screen to the customer so they can add their card to a digital wallet.
-          The card will display their current points balance in real time.
         </p>
         <div class="d-flex flex-wrap gap-2">
-          <button
-            class="btn btn-wallet btn-google"
-            onclick="addToWallet('google')"
-            title="Add to Google Wallet"
-          >
+          <button class="btn btn-wallet btn-google" onclick="addToWallet('google')" title="Add to Google Wallet">
             <i class="fab fa-google me-1"></i>Google Wallet
             {% if 'google' in wallet_types %}<span class="badge bg-light text-dark ms-1">✓</span>{% endif %}
           </button>
-          <a
-            href="{{ url_for('wallet.apple_wallet', customer_id=customer.id) }}"
-            class="btn btn-wallet btn-apple"
-            title="Add to Apple Wallet"
-          >
+          <a href="{{ url_for('wallet.apple_wallet', customer_id=customer.id) }}"
+             class="btn btn-wallet btn-apple" title="Add to Apple Wallet">
             <i class="fab fa-apple me-1"></i>Apple Wallet
             {% if 'apple' in wallet_types %}<span class="badge bg-light text-dark ms-1">✓</span>{% endif %}
           </a>
-          <button
-            class="btn btn-wallet btn-samsung"
-            onclick="addToWallet('samsung')"
-            title="Add to Samsung Wallet"
-          >
+          <button class="btn btn-wallet btn-samsung" onclick="addToWallet('samsung')" title="Add to Samsung Wallet">
             <i class="fas fa-mobile-screen me-1"></i>Samsung Wallet
             {% if 'samsung' in wallet_types %}<span class="badge bg-light text-dark ms-1">✓</span>{% endif %}
           </button>
@@ -111,35 +93,31 @@
     <div class="card shadow-sm border-0 mb-3">
       <div class="card-header bg-light d-flex align-items-center">
         <h6 class="mb-0 flex-grow-1"><i class="fas fa-coins me-2 text-warning"></i>Add / Remove Points</h6>
-        <span class="text-muted small">Tap + to add, − to subtract</span>
+        <span class="text-muted small">+ add &nbsp;|&nbsp; − subtract</span>
       </div>
       <div class="card-body p-0">
         {% for action in config.actions %}
         <div class="action-row d-flex align-items-center px-3 py-3 {% if not loop.last %}border-bottom{% endif %}">
 
-          {# Minus button #}
-          <button
-            class="btn btn-outline-danger action-btn"
-            onclick="handleAddPoints('{{ action.id }}', -1)"
-            aria-label="Remove {{ action.name }}"
-          >
+          <button class="btn btn-outline-danger action-btn"
+                  onclick="handleAddPoints('{{ action.id }}', -1)"
+                  aria-label="Remove {{ action.name }}">
             <i class="fas fa-minus"></i>
           </button>
 
-          {# Action info #}
           <div class="action-info flex-grow-1 text-center mx-3">
             <div class="action-icon">{{ action.icon if action.icon is defined else '⭐' }}</div>
             <div class="action-name fw-semibold">{{ action.name }}</div>
             <div class="action-desc text-muted small">{{ action.description }}</div>
             <span class="badge bg-primary mt-1">+{{ action.points }} pt{{ 's' if action.points != 1 else '' }}</span>
+            {% if is_multi_track and action.track_id is defined %}
+            <span class="badge bg-secondary ms-1">{{ action.track_id }}</span>
+            {% endif %}
           </div>
 
-          {# Plus button #}
-          <button
-            class="btn btn-success action-btn"
-            onclick="handleAddPoints('{{ action.id }}', 1)"
-            aria-label="Add {{ action.name }}"
-          >
+          <button class="btn btn-success action-btn"
+                  onclick="handleAddPoints('{{ action.id }}', 1)"
+                  aria-label="Add {{ action.name }}">
             <i class="fas fa-plus"></i>
           </button>
 
@@ -159,11 +137,9 @@
         <div class="card-body" id="cashout-buttons">
           {% for reward in available_rewards %}
           <div class="d-grid mb-2">
-            <button
-              class="btn btn-warning btn-lg fw-semibold"
-              onclick="handleCashout('{{ reward.id }}')"
-            >
-              <i class="fas fa-gift me-2"></i>Cash Out: {{ reward.name }}
+            <button class="btn btn-warning btn-lg fw-semibold"
+                    onclick="handleCashout('{{ reward.id }}')">
+              <i class="fas fa-gift me-2"></i>{{ reward.name }}
               <span class="badge bg-dark ms-2">{{ reward.points_required }} pts</span>
             </button>
           </div>
@@ -174,7 +150,7 @@
 
     {# ── Transaction history ── #}
     {% if transactions %}
-    <div class="card shadow-sm border-0">
+    <div class="card shadow-sm border-0 mb-3">
       <div class="card-header bg-light">
         <h6 class="mb-0 text-muted"><i class="fas fa-clock-rotate-left me-2"></i>Recent Activity</h6>
       </div>
@@ -183,7 +159,10 @@
         <li class="list-group-item d-flex justify-content-between align-items-center py-2">
           <div>
             <div class="small fw-semibold">{{ tx.action_name }}</div>
-            <div class="text-muted" style="font-size: 0.75rem;">{{ tx.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
+            <div class="text-muted" style="font-size: 0.75rem;">
+              {{ tx.created_at.strftime('%Y-%m-%d %H:%M') }}
+              {% if tx.track_id %}<span class="badge bg-light text-secondary ms-1">{{ tx.track_id }}</span>{% endif %}
+            </div>
           </div>
           <span class="badge {% if tx.points_delta > 0 %}bg-success{% else %}bg-danger{% endif %} fs-6">
             {{ '+' if tx.points_delta > 0 else '' }}{{ tx.points_delta }}
@@ -203,9 +182,10 @@
         <p class="text-muted small mb-3">
           Delete this customer and all associated transaction history. This action cannot be undone.
         </p>
-        <form method="POST" action="{{ url_for('customer.delete_customer', customer_id=customer.id) }}" style="display:inline;">
+        <form method="POST" action="{{ url_for('customer.delete_customer', customer_id=customer.id) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-          <button type="submit" class="btn btn-danger" onclick="return confirm('Are you absolutely sure you want to delete {{ customer.display_name }}? All transaction history will be lost.')">
+          <button type="submit" class="btn btn-danger"
+                  onclick="return confirm('Are you absolutely sure you want to delete {{ customer.display_name }}?')">
             <i class="fas fa-trash me-2"></i>Delete Customer
           </button>
         </form>
@@ -275,19 +255,25 @@
 
   // ── refresh UI after a points change ─────────────────────────────────────
   function refreshPointsUI(data) {
-    // Points value
-    const pv = document.getElementById("points-value");
-    pv.textContent = data.points;
-    pv.classList.add("points-flash");
-    setTimeout(() => pv.classList.remove("points-flash"), 600);
+    const ts = data.track_status || {};
 
-    // Status message
-    document.getElementById("status-message").textContent = data.status_message;
+    // Update each track row
+    Object.entries(ts).forEach(([trackId, info]) => {
+      const ptsEl = document.getElementById(`pts-${trackId}`);
+      if (ptsEl) {
+        ptsEl.textContent = info.points;
+        ptsEl.classList.add("points-flash");
+        setTimeout(() => ptsEl.classList.remove("points-flash"), 600);
+      }
+      const statusEl = document.getElementById(`status-${trackId}`);
+      if (statusEl) statusEl.textContent = info.status_message;
 
-    // Progress bar
-    const bar = document.getElementById("loyalty-progress");
-    bar.style.width = data.progress_pct + "%";
-    bar.setAttribute("aria-valuenow", data.points);
+      const barEl = document.getElementById(`progress-${trackId}`);
+      if (barEl) {
+        barEl.style.width = info.progress_pct + "%";
+        barEl.setAttribute("aria-valuenow", info.points);
+      }
+    });
 
     // Rewards section
     const section = document.getElementById("rewards-section");
@@ -304,7 +290,7 @@
         div.className = "d-grid mb-2";
         div.innerHTML = `<button class="btn btn-warning btn-lg fw-semibold"
           onclick="handleCashout('${r.id}')">
-          <i class="fas fa-gift me-2"></i>Cash Out: ${r.name}
+          <i class="fas fa-gift me-2"></i>${r.name}
           <span class="badge bg-dark ms-2">${r.points_required} pts</span>
         </button>`;
         container.appendChild(div);
@@ -312,33 +298,21 @@
     }
   }
 
-  // ── add to digital wallet ────────────────────────────────────────────────
+  // ── wallet QR modal ───────────────────────────────────────────────────────
   function showWalletQr(title, link, helpText) {
-    const titleEl = document.getElementById("walletQrModalLabel");
-    const helpEl = document.getElementById("walletQrHelpText");
+    document.getElementById("walletQrModalLabel").textContent = title;
+    document.getElementById("walletQrHelpText").textContent = helpText;
+    document.getElementById("walletOpenLink").href = link;
+
     const qrEl = document.getElementById("walletQrCode");
-    const openLinkEl = document.getElementById("walletOpenLink");
-
-    titleEl.textContent = title;
-    helpEl.textContent = helpText;
-    openLinkEl.href = link;
-
     qrEl.innerHTML = "";
-    new QRCode(qrEl, {
-      text: link,
-      width: 240,
-      height: 240,
-      correctLevel: QRCode.CorrectLevel.M,
-    });
+    new QRCode(qrEl, { text: link, width: 240, height: 240, correctLevel: QRCode.CorrectLevel.M });
 
-    const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById("walletQrModal"));
-    modal.show();
+    bootstrap.Modal.getOrCreateInstance(document.getElementById("walletQrModal")).show();
   }
 
   function addToWallet(type) {
-    fetch(`/wallet/${type}/${CUSTOMER_ID}`, {
-      headers: { "X-CSRFToken": getCsrfToken() }
-    })
+    fetch(`/wallet/${type}/${CUSTOMER_ID}`, { headers: { "X-CSRFToken": getCsrfToken() } })
       .then(r => r.json())
       .then(data => {
         if (data.error) {
@@ -346,17 +320,11 @@
           return;
         }
         if (type === "google" && data.save_link) {
-          showWalletQr(
-            "Google Wallet",
-            data.save_link,
-            "Ask the customer to scan this QR code to add their pass to Google Wallet."
-          );
+          showWalletQr("Google Wallet", data.save_link,
+            "Ask the customer to scan this QR code to add their pass to Google Wallet.");
         } else if (type === "samsung" && data.add_link) {
-          showWalletQr(
-            "Samsung Wallet",
-            data.add_link,
-            "Ask the customer to scan this QR code to add their pass to Samsung Wallet."
-          );
+          showWalletQr("Samsung Wallet", data.add_link,
+            "Ask the customer to scan this QR code to add their pass to Samsung Wallet.");
         } else {
           showAlert("Wallet link could not be generated.", "warning");
         }

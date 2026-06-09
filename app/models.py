@@ -44,6 +44,9 @@ class Customer(db.Model):
     first_name = db.Column(db.String(64), nullable=True)
     last_name = db.Column(db.String(64), nullable=True)
     points = db.Column(db.Integer, nullable=False, default=0)
+    # Per-track balances: {"medium": 5, "large": 3}
+    # For single-track configs this is {} and `points` is used directly.
+    track_points = db.Column(db.JSON, nullable=True, default=dict)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
     wallet_cards = db.relationship(
@@ -102,4 +105,5 @@ class PointTransaction(db.Model):
     action_id = db.Column(db.String(64), nullable=False)
     action_name = db.Column(db.String(128), nullable=False)
     points_delta = db.Column(db.Integer, nullable=False)
+    track_id = db.Column(db.String(64), nullable=True)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)

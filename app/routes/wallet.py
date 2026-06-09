@@ -3,7 +3,13 @@ from flask_login import login_required
 
 from app.extensions import db
 from app.models import Customer, WalletCard
-from app.loyalty import load_config, get_status_message
+from app.loyalty import (
+    load_config,
+    get_config_tracks,
+    get_track_points_value,
+    get_combined_status_message,
+    get_status_message,
+)
 
 wallet_bp = Blueprint("wallet", __name__)
 
@@ -40,9 +46,19 @@ def google_wallet(customer_id: str):
         ), 503
 
     try:
-        status_message = get_status_message(config, customer.points)
-        rewards = config.get("rewards", [])
-        points_label = rewards[0].get("action_unit", "Points").capitalize() if rewards else "Points"
+        tracks = get_config_tracks(config)
+        primary_track = tracks[0]
+        primary_pts = get_track_points_value(customer, primary_track["id"])
+        primary_label = primary_track.get("action_unit", "point").capitalize()
+
+        secondary_pts = None
+        secondary_label = None
+        if len(tracks) > 1:
+            sec_track = tracks[1]
+            secondary_pts = get_track_points_value(customer, sec_track["id"])
+            secondary_label = sec_track.get("action_unit", "point").capitalize()
+
+        status_message = get_combined_status_message(config, customer)
         gw.ensure_loyalty_class(
             program_name=config.get("program_name", "Loyalty Program"),
             issuer_name=config.get("organization_name", "LoyaltyMonitor"),
@@ -50,9 +66,11 @@ def google_wallet(customer_id: str):
         gw.create_or_update_loyalty_object(
             customer_id=customer.id,
             customer_name=customer.display_name,
-            points=customer.points,
+            points=primary_pts,
+            points_label=primary_label,
+            secondary_points=secondary_pts,
+            secondary_label=secondary_label,
             status_message=status_message,
-            points_label=points_label,
         )
         save_link = gw.generate_save_link(customer_id=customer.id)
         _register_card(customer_id, "google")

@@ -18,7 +18,15 @@ import qrcode.constants
 
 from app.extensions import db
 from app.models import Customer, PointTransaction, WalletCard
-from app.loyalty import load_config, get_status_message, get_progress_pct
+from app.loyalty import (
+    load_config,
+    get_config_tracks,
+    get_track_points_value,
+    get_track_status,
+    get_all_track_status,
+    get_available_rewards,
+    get_combined_status_message,
+)
 
 customer_bp = Blueprint("customer", __name__)
 
@@ -33,20 +41,50 @@ def _update_wallet_passes(customer: Customer, config: dict) -> None:
     """Best-effort push of updated points to registered wallet passes."""
     from app.wallet import get_google_wallet_service
 
-    status_msg = get_status_message(config, customer.points)
     has_google = any(c.wallet_type == "google" for c in customer.wallet_cards)
+    if not has_google:
+        return
 
-    if has_google:
-        rewards = config.get("rewards", [])
-        points_label = rewards[0].get("action_unit", "Points").capitalize() if rewards else "Points"
-        gw = get_google_wallet_service()
-        if gw:
-            gw.update_loyalty_object(
-                customer_id=customer.id,
-                points=customer.points,
-                status_message=status_msg,
-                points_label=points_label,
-            )
+    gw = get_google_wallet_service()
+    if not gw:
+        return
+
+    tracks = get_config_tracks(config)
+    primary_track = tracks[0]
+    primary_pts = get_track_points_value(customer, primary_track["id"])
+    primary_label = primary_track.get("action_unit", "point").capitalize()
+
+    secondary_pts = None
+    secondary_label = None
+    if len(tracks) > 1:
+        sec_track = tracks[1]
+        secondary_pts = get_track_points_value(customer, sec_track["id"])
+        secondary_label = sec_track.get("action_unit", "point").capitalize()
+
+    gw.update_loyalty_object(
+        customer_id=customer.id,
+        points=primary_pts,
+        status_message=get_combined_status_message(config, customer),
+        points_label=primary_label,
+        secondary_points=secondary_pts,
+        secondary_label=secondary_label,
+    )
+
+
+def _track_status_payload(config: dict, customer: Customer) -> dict:
+    """Build the track_status dict returned in JSON responses."""
+    result = {}
+    for track in get_config_tracks(config):
+        tid = track["id"]
+        pts = get_track_points_value(customer, tid)
+        ts = get_track_status(config, tid, pts)
+        result[tid] = {
+            "points": pts,
+            "status_message": ts["message"],
+            "progress_pct": ts["progress_pct"],
+            "points_required": ts["points_required"],
+        }
+    return result
 
 
 # ── routes ────────────────────────────────────────────────────────────────────
@@ -95,8 +133,10 @@ def customer_detail(customer_id: str):
     customer = db.get_or_404(Customer, customer_id)
     config = _get_config()
 
-    status_message = get_status_message(config, customer.points)
-    progress_pct = get_progress_pct(config, customer.points)
+    config_tracks = get_config_tracks(config)
+    is_multi_track = len(config_tracks) > 1
+    track_status = get_all_track_status(config, customer)
+    available_rewards = get_available_rewards(config, customer)
 
     transactions = (
         PointTransaction.query.filter_by(customer_id=customer_id)
@@ -105,25 +145,18 @@ def customer_detail(customer_id: str):
         .all()
     )
 
-    available_rewards = [
-        r for r in config.get("rewards", []) if customer.points >= r["points_required"]
-    ]
-
     wallet_types = {c.wallet_type for c in customer.wallet_cards}
-    max_points = (
-        config["rewards"][0]["points_required"] if config.get("rewards") else 10
-    )
 
     return render_template(
         "customer_detail.html",
         customer=customer,
         config=config,
-        status_message=status_message,
-        progress_pct=progress_pct,
-        transactions=transactions,
+        config_tracks=config_tracks,
+        is_multi_track=is_multi_track,
+        track_status=track_status,
         available_rewards=available_rewards,
+        transactions=transactions,
         wallet_types=wallet_types,
-        max_points=max_points,
     )
 
 
@@ -144,18 +177,32 @@ def add_points(customer_id: str):
     if not action:
         return jsonify({"error": "Unknown action"}), 400
 
+    track_id = action.get("track_id", "default")
     points_delta = action["points"] * delta
-    new_points = customer.points + points_delta
-    if new_points < 0:
-        return jsonify({"error": "Cannot subtract below 0 points", "points": customer.points}), 400
 
-    customer.points = new_points
+    # Work with a copy so SQLAlchemy detects the change
+    tp = dict(customer.track_points or {})
+
+    # Migrate legacy single-track customers
+    if not tp and customer.points > 0:
+        tp["default"] = customer.points
+
+    current = tp.get(track_id, 0)
+    new_val = current + points_delta
+    if new_val < 0:
+        return jsonify({"error": "Cannot subtract below 0", "track_points": tp}), 400
+
+    tp[track_id] = new_val
+    customer.track_points = tp
+    customer.points = sum(tp.values())
+
     db.session.add(
         PointTransaction(
             customer_id=customer_id,
             action_id=action_id,
             action_name=action["name"],
             points_delta=points_delta,
+            track_id=track_id,
         )
     )
     db.session.commit()
@@ -165,20 +212,14 @@ def add_points(customer_id: str):
     except Exception as exc:
         current_app.logger.warning("Wallet update failed: %s", exc)
 
-    available_rewards = [
-        r for r in config.get("rewards", []) if customer.points >= r["points_required"]
-    ]
-
-    return jsonify(
-        {
-            "success": True,
-            "points": customer.points,
-            "points_delta": points_delta,
-            "status_message": get_status_message(config, customer.points),
-            "progress_pct": get_progress_pct(config, customer.points),
-            "available_rewards": available_rewards,
-        }
-    )
+    return jsonify({
+        "success": True,
+        "track_id": track_id,
+        "points_delta": points_delta,
+        "total_points": customer.points,
+        "track_status": _track_status_payload(config, customer),
+        "available_rewards": get_available_rewards(config, customer),
+    })
 
 
 @customer_bp.route("/<customer_id>/cashout", methods=["POST"])
@@ -194,16 +235,27 @@ def cashout(customer_id: str):
     if not reward:
         return jsonify({"error": "Unknown reward"}), 400
 
-    if customer.points < reward["points_required"]:
+    track_id = reward.get("track_id", "default")
+
+    tp = dict(customer.track_points or {})
+    if not tp and customer.points > 0:
+        tp["default"] = customer.points
+
+    current = tp.get(track_id, 0)
+    if current < reward["points_required"]:
         return jsonify({"error": "Insufficient points"}), 400
 
-    customer.points -= reward["points_required"]
+    tp[track_id] = current - reward["points_required"]
+    customer.track_points = tp
+    customer.points = sum(tp.values())
+
     db.session.add(
         PointTransaction(
             customer_id=customer_id,
             action_id=f"cashout_{reward_id}",
             action_name=f"Reward: {reward['name']}",
             points_delta=-reward["points_required"],
+            track_id=track_id,
         )
     )
     db.session.commit()
@@ -213,15 +265,13 @@ def cashout(customer_id: str):
     except Exception as exc:
         current_app.logger.warning("Wallet update failed: %s", exc)
 
-    return jsonify(
-        {
-            "success": True,
-            "points": customer.points,
-            "status_message": get_status_message(config, customer.points),
-            "progress_pct": get_progress_pct(config, customer.points),
-            "message": f'Reward "{reward["name"]}" redeemed successfully!',
-        }
-    )
+    return jsonify({
+        "success": True,
+        "total_points": customer.points,
+        "track_status": _track_status_payload(config, customer),
+        "available_rewards": get_available_rewards(config, customer),
+        "message": f'Reward "{reward["name"]}" redeemed successfully!',
+    })
 
 
 @customer_bp.route("/<customer_id>/delete", methods=["POST"])
@@ -229,10 +279,8 @@ def cashout(customer_id: str):
 def delete_customer(customer_id: str):
     customer = db.get_or_404(Customer, customer_id)
     customer_name = customer.display_name
-
     db.session.delete(customer)
     db.session.commit()
-
     flash(f'Customer "{customer_name}" has been deleted.', "success")
     return redirect(url_for("customer.list_customers"))
 

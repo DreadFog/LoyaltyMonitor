@@ -83,8 +83,10 @@ class GoogleWalletService:
         points: int,
         status_message: str,
         points_label: str = "Points",
+        secondary_points: int | None = None,
+        secondary_label: str | None = None,
     ) -> dict[str, Any]:
-        return {
+        body: dict[str, Any] = {
             "id": self._object_id(customer_id),
             "classId": self.class_id,
             "accountId": customer_id,
@@ -103,6 +105,12 @@ class GoogleWalletService:
                 "alternateText": customer_id[:8],
             },
         }
+        if secondary_points is not None and secondary_label:
+            body["secondaryLoyaltyPoints"] = {
+                "balance": {"string": str(secondary_points)},
+                "label": secondary_label,
+            }
+        return body
 
     # ── public API ────────────────────────────────────────────────────────────
 
@@ -147,11 +155,14 @@ class GoogleWalletService:
         points: int,
         status_message: str,
         points_label: str = "Points",
+        secondary_points: int | None = None,
+        secondary_label: str | None = None,
     ) -> dict:
         """Create the loyalty object if missing, otherwise patch it."""
         object_id = self._object_id(customer_id)
         obj = self._loyalty_object_body(
-            customer_id, customer_name, points, status_message, points_label
+            customer_id, customer_name, points, status_message,
+            points_label, secondary_points, secondary_label,
         )
 
         get_resp = self._api_get(f"loyaltyObject/{object_id}")
@@ -164,7 +175,7 @@ class GoogleWalletService:
         if get_resp.status_code != 200:
             get_resp.raise_for_status()
 
-        patch = {
+        patch: dict[str, Any] = {
             "accountName": customer_name,
             "state": "ACTIVE",
             "loyaltyPoints": {"balance": {"string": str(points)}, "label": points_label},
@@ -172,6 +183,11 @@ class GoogleWalletService:
                 {"id": "status", "header": "Status", "body": status_message}
             ],
         }
+        if secondary_points is not None and secondary_label:
+            patch["secondaryLoyaltyPoints"] = {
+                "balance": {"string": str(secondary_points)},
+                "label": secondary_label,
+            }
         patch_resp = self._api_patch(f"loyaltyObject/{object_id}", patch)
         patch_resp.raise_for_status()
         return patch_resp.json()
@@ -198,16 +214,27 @@ class GoogleWalletService:
         return f"https://pay.google.com/gp/v/save/{token}"
 
     def update_loyalty_object(
-        self, customer_id: str, points: int, status_message: str, points_label: str = "Points"
+        self,
+        customer_id: str,
+        points: int,
+        status_message: str,
+        points_label: str = "Points",
+        secondary_points: int | None = None,
+        secondary_label: str | None = None,
     ) -> dict:
         """PATCH an existing loyalty object to reflect new points/status."""
         object_id = self._object_id(customer_id)
-        patch = {
+        patch: dict[str, Any] = {
             "loyaltyPoints": {"balance": {"string": str(points)}, "label": points_label},
             "textModulesData": [
                 {"id": "status", "header": "Status", "body": status_message}
             ],
         }
+        if secondary_points is not None and secondary_label:
+            patch["secondaryLoyaltyPoints"] = {
+                "balance": {"string": str(secondary_points)},
+                "label": secondary_label,
+            }
         resp = self._api_patch(f"loyaltyObject/{object_id}", patch)
         if resp.status_code == 404:
             raise ValueError(
