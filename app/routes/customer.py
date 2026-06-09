@@ -78,11 +78,15 @@ def _track_status_payload(config: dict, customer: Customer) -> dict:
         tid = track["id"]
         pts = get_track_points_value(customer, tid)
         ts = get_track_status(config, tid, pts)
+        remaining = max(0, ts["points_required"] - pts) if ts["points_required"] else 0
         result[tid] = {
+            "track_name": track.get("name", tid),
+            "action_unit": track.get("action_unit", "point"),
             "points": pts,
             "status_message": ts["message"],
             "progress_pct": ts["progress_pct"],
             "points_required": ts["points_required"],
+            "remaining": remaining,
         }
     return result
 
@@ -218,6 +222,95 @@ def add_points(customer_id: str):
         "points_delta": points_delta,
         "total_points": customer.points,
         "track_status": _track_status_payload(config, customer),
+        "available_rewards": get_available_rewards(config, customer),
+    })
+
+
+@customer_bp.route("/<customer_id>/scan-credit", methods=["POST"])
+@login_required
+def scan_credit(customer_id: str):
+    """Apply a batch of preselected action quantities right after scan."""
+    customer = db.get_or_404(Customer, customer_id)
+    config = _get_config()
+
+    data = request.get_json(silent=True) or {}
+    actions_qty = data.get("actions", {})
+    if not isinstance(actions_qty, dict) or not actions_qty:
+        return jsonify({"error": "No actions selected"}), 400
+
+    actions_map = {a["id"]: a for a in config.get("actions", [])}
+
+    tp = dict(customer.track_points or {})
+    if not tp and customer.points > 0:
+        tp["default"] = customer.points
+
+    applied = []
+    for action_id, qty_raw in actions_qty.items():
+        action = actions_map.get(action_id)
+        if not action:
+            return jsonify({"error": f"Unknown action: {action_id}"}), 400
+
+        try:
+            qty = int(qty_raw)
+        except (TypeError, ValueError):
+            return jsonify({"error": f"Invalid quantity for {action_id}"}), 400
+
+        if qty < 0:
+            return jsonify({"error": f"Quantity cannot be negative for {action_id}"}), 400
+        if qty == 0:
+            continue
+
+        track_id = action.get("track_id", "default")
+        points_delta = action["points"] * qty
+        tp[track_id] = tp.get(track_id, 0) + points_delta
+
+        db.session.add(
+            PointTransaction(
+                customer_id=customer_id,
+                action_id=action_id,
+                action_name=f"{action['name']} x{qty}",
+                points_delta=points_delta,
+                track_id=track_id,
+            )
+        )
+        applied.append({
+            "action_id": action_id,
+            "action_name": action["name"],
+            "quantity": qty,
+            "points_delta": points_delta,
+            "track_id": track_id,
+        })
+
+    if not applied:
+        return jsonify({"error": "No positive quantities selected"}), 400
+
+    customer.track_points = tp
+    customer.points = sum(tp.values())
+    db.session.commit()
+
+    try:
+        _update_wallet_passes(customer, config)
+    except Exception as exc:
+        current_app.logger.warning("Wallet update failed: %s", exc)
+
+    track_status = _track_status_payload(config, customer)
+    remaining_by_track = {
+        tid: {
+            "track_name": info["track_name"],
+            "action_unit": info["action_unit"],
+            "remaining": info["remaining"],
+        }
+        for tid, info in track_status.items()
+    }
+
+    return jsonify({
+        "success": True,
+        "customer_id": customer.id,
+        "customer_name": customer.display_name,
+        "applied": applied,
+        "total_points": customer.points,
+        "track_status": track_status,
+        "remaining_by_track": remaining_by_track,
         "available_rewards": get_available_rewards(config, customer),
     })
 

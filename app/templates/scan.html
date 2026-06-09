@@ -17,6 +17,33 @@
     </div>
 
     <div class="card shadow-sm border-0 mb-3">
+      <div class="card-header bg-light d-flex align-items-center justify-content-between">
+        <h6 class="mb-0 text-muted"><i class="fas fa-cart-plus me-2"></i>Preselect credit</h6>
+        <button id="resetSelections" type="button" class="btn btn-outline-secondary btn-sm">Reset</button>
+      </div>
+      <div class="card-body p-0">
+        {% for action in config.actions %}
+        <div class="d-flex align-items-center justify-content-between px-3 py-2 {% if not loop.last %}border-bottom{% endif %}">
+          <div>
+            <div class="fw-semibold">{{ action.icon if action.icon is defined else '⭐' }} {{ action.name }}</div>
+            <div class="text-muted small">{{ action.description }}</div>
+          </div>
+          <div class="d-flex align-items-center gap-2">
+            <button type="button" class="btn btn-outline-danger btn-sm"
+                    onclick="changeQty('{{ action.id }}', -1)">−</button>
+            <span id="qty-{{ action.id }}" class="fw-bold" style="min-width: 1.5rem; text-align: center;">0</span>
+            <button type="button" class="btn btn-success btn-sm"
+                    onclick="changeQty('{{ action.id }}', 1)">+</button>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="card-footer bg-white small text-muted">
+        Select quantities first, then scan. The selected actions are auto-applied on scan.
+      </div>
+    </div>
+
+    <div class="card shadow-sm border-0 mb-3">
       <div class="card-body text-center p-3">
         <p class="text-muted small mb-3">
           Point the camera at the QR code on the customer's loyalty card.
@@ -24,8 +51,18 @@
         <div id="reader" class="rounded overflow-hidden"></div>
         <div id="scan-result" class="mt-3 d-none">
           <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
-          <span class="text-muted">Redirecting…</span>
+          <span class="text-muted" id="scanResultText">Processing…</span>
         </div>
+      </div>
+    </div>
+
+    <div id="creditResult" class="card shadow-sm border-0 mb-3 d-none">
+      <div class="card-header bg-success bg-opacity-10">
+        <h6 class="mb-0 text-success"><i class="fas fa-check-circle me-2"></i>Credit applied</h6>
+      </div>
+      <div class="card-body">
+        <div class="fw-semibold mb-2" id="creditCustomer"></div>
+        <div id="remainingList" class="small"></div>
       </div>
     </div>
 
@@ -58,14 +95,89 @@
 {% block extra_scripts %}
 <script>
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const ACTIONS = {{ config.actions | tojson }};
+  const selectedQty = {};
+  let isProcessing = false;
+
+  function changeQty(actionId, delta) {
+    const current = selectedQty[actionId] || 0;
+    const next = Math.max(0, current + delta);
+    selectedQty[actionId] = next;
+    document.getElementById(`qty-${actionId}`).textContent = next;
+  }
+
+  function resetSelections() {
+    ACTIONS.forEach(a => {
+      selectedQty[a.id] = 0;
+      document.getElementById(`qty-${a.id}`).textContent = 0;
+    });
+  }
+
+  function selectedActionsPayload() {
+    const out = {};
+    ACTIONS.forEach(a => {
+      const q = selectedQty[a.id] || 0;
+      if (q > 0) out[a.id] = q;
+    });
+    return out;
+  }
+
+  function renderCreditResult(data) {
+    const card = document.getElementById("creditResult");
+    const customer = document.getElementById("creditCustomer");
+    const remainingList = document.getElementById("remainingList");
+
+    customer.textContent = `Customer: ${data.customer_name}`;
+    const lines = [];
+    Object.values(data.remaining_by_track || {}).forEach(item => {
+      const unit = item.action_unit || "item";
+      lines.push(`<div>• ${item.track_name}: <strong>${item.remaining}</strong> ${unit}(s) left</div>`);
+    });
+    remainingList.innerHTML = lines.join("");
+    card.classList.remove("d-none");
+  }
+
+  function processCustomer(customerId) {
+    if (isProcessing) return;
+    isProcessing = true;
+
+    const selected = selectedActionsPayload();
+    const hasSelections = Object.keys(selected).length > 0;
+
+    document.getElementById("scan-result").classList.remove("d-none");
+    document.getElementById("scanResultText").textContent = hasSelections
+      ? "Applying selected credits…"
+      : "No preselection. Opening customer…";
+
+    if (!hasSelections) {
+      window.location.href = `/customers/${customerId}`;
+      return;
+    }
+
+    postJSON(`/customers/${customerId}/scan-credit`, { actions: selected })
+      .then(data => {
+        if (data.error) {
+          showAlert(data.error, "danger");
+          return;
+        }
+        renderCreditResult(data);
+        showAlert("Credits applied successfully.", "success");
+        resetSelections();
+      })
+      .catch(() => showAlert("Could not apply credits. Try again.", "danger"))
+      .finally(() => {
+        isProcessing = false;
+        document.getElementById("scan-result").classList.add("d-none");
+      });
+  }
 
   function onScanSuccess(decodedText) {
-    if (!UUID_RE.test(decodedText.trim())) {
+    const customerId = decodedText.trim();
+    if (!UUID_RE.test(customerId)) {
       showAlert("Invalid QR code — please scan a LoyaltyMonitor card.", "warning");
       return;
     }
-    document.getElementById("scan-result").classList.remove("d-none");
-    window.location.href = "/customers/" + decodedText.trim();
+    processCustomer(customerId);
   }
 
   const scanner = new Html5QrcodeScanner(
@@ -83,7 +195,10 @@
       showAlert("Please enter a valid customer UUID.", "warning");
       return;
     }
-    window.location.href = "/customers/" + val;
+    processCustomer(val);
   });
+
+  document.getElementById("resetSelections").addEventListener("click", resetSelections);
+  resetSelections();
 </script>
 {% endblock %}
