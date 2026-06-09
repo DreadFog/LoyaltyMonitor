@@ -1,0 +1,221 @@
+/* ─────────────────────────────────────────────────────────────
+   LoyaltyMonitor — custom stylesheet
+   Augments Bootstrap 5. Two body classes drive layout:
+     body.mode-desktop  (default)
+     body.mode-mobile   (toggled by the admin)
+───────────────────────────────────────────────────────────── */
+
+/* ── Login page ──────────────────────────────────────────── */
+.login-wrapper {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  background: linear-gradient(135deg, #0d6efd 0%, #6610f2 100%);
+  padding: 2rem 1rem;
+}
+
+.login-card {
+  border-radius: 1rem;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+}
+
+.login-icon {
+  background: #e9f0ff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 5rem;
+  height: 5rem;
+  border-radius: 50%;
+  margin-bottom: 0.5rem;
+}
+
+/* ── Navbar active link ───────────────────────────────────── */
+.navbar .nav-link.active {
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ── Main content container ──────────────────────────────── */
+.main-content {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+body.mode-desktop .main-content {
+  max-width: 1140px;
+}
+
+/* ── Customer header card ────────────────────────────────── */
+.customer-header {
+  background: linear-gradient(135deg, #0d6efd 0%, #6610f2 100%);
+  color: #fff;
+  border-radius: 1rem;
+  padding: 1.5rem;
+}
+
+/* ── Points display ──────────────────────────────────────── */
+.points-value {
+  font-size: 3.5rem;
+  font-weight: 800;
+  line-height: 1;
+  color: #fff;
+  transition: transform 0.15s ease;
+}
+
+.points-value.points-flash {
+  transform: scale(1.25);
+  color: #ffe082;
+}
+
+.points-label {
+  font-size: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  opacity: 0.75;
+  color: #fff;
+}
+
+.status-message {
+  font-size: 1.15rem;
+  font-weight: 500;
+  opacity: 0.9;
+  color: #d4edda;
+}
+
+/* ── Loyalty progress bar ────────────────────────────────── */
+.loyalty-progress {
+  height: 10px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.loyalty-progress .progress-bar {
+  border-radius: 5px;
+  transition: width 0.5s ease;
+}
+
+/* ── Action rows ─────────────────────────────────────────── */
+.action-row {
+  transition: background 0.1s;
+}
+
+.action-row:hover {
+  background: #f8f9fa;
+}
+
+.action-icon {
+  font-size: 1.75rem;
+  line-height: 1;
+}
+
+.action-name {
+  font-size: 1rem;
+}
+
+.action-desc {
+  font-size: 0.8rem;
+}
+
+/* Action buttons (circular) */
+.action-btn {
+  width: 2.8rem;
+  height: 2.8rem;
+  border-radius: 50% !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+  font-size: 1rem;
+  transition: transform 0.1s ease;
+}
+
+.action-btn:active {
+  transform: scale(0.9);
+}
+
+/* ── Mobile mode overrides ───────────────────────────────── */
+body.mode-mobile .action-btn {
+  width: 3.5rem;
+  height: 3.5rem;
+  font-size: 1.25rem;
+}
+
+body.mode-mobile .action-name {
+  font-size: 1.1rem;
+}
+
+body.mode-mobile .action-icon {
+  font-size: 2rem;
+}
+
+body.mode-mobile .points-value {
+  font-size: 4.5rem;
+}
+
+body.mode-mobile .btn {
+  padding: 0.6rem 1.2rem;
+}
+
+body.mode-mobile .btn-lg {
+  font-size: 1.15rem;
+  padding: 0.85rem 1.5rem;
+}
+
+body.mode-mobile .card-body {
+  padding: 1.25rem;
+}
+
+/* ── Wallet buttons ──────────────────────────────────────── */
+.btn-wallet {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: none;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  padding: 0.5rem 1rem;
+  transition: filter 0.15s ease, transform 0.1s ease;
+}
+
+.btn-wallet:hover {
+  filter: brightness(1.1);
+}
+
+.btn-wallet:active {
+  transform: scale(0.97);
+}
+
+.btn-google {
+  background: #4285f4;
+  color: #fff;
+}
+
+.btn-apple {
+  background: #1c1c1e;
+  color: #fff;
+}
+
+.btn-samsung {
+  background: #1428a0;
+  color: #fff;
+}
+
+/* ── QR scanner ──────────────────────────────────────────── */
+#reader {
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+/* ── Dashboard cards (mobile) ────────────────────────────── */
+.customer-avatar {
+  width: 2.5rem;
+  text-align: center;
+}
+
+/* ── Opacity utility not in BS5 ──────────────────────────── */
+.opacity-60 { opacity: 0.6; }
