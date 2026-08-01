@@ -1,0 +1,11 @@
+{
+  "name": "LoyaltyMonitor",
+  "short_name": "Loyalty",
+  "description": "Loyalty card management and QR scan",
+  "start_url": "/customers/scan",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#0d6efd",
+  "icons": []
+}
