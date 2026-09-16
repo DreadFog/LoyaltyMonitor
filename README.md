@@ -34,6 +34,8 @@ Edit `config/pizzeria.json` (or point `LOYALTY_CONFIG_PATH` to another file):
 ```jsonc
 {
   "program_name": "Pizzeria Loyalty",
+   "phone_number_default_extension": "+33",
+   "phone_number_group_size": 2,
   "actions": [
     { "id": "medium_pizza", "name": "Medium Pizza", "points": 1, "icon": "🍕" }
   ],
@@ -49,6 +51,8 @@ Edit `config/pizzeria.json` (or point `LOYALTY_CONFIG_PATH` to another file):
 ```
 
 `{remaining}` in `status_template` is replaced with `points_required − current_points`.
+`phone_number_default_extension` is added when a phone number is entered without an international prefix.
+`phone_number_group_size` controls how customer phone digits are grouped for display and defaults to `2`.
 
 ---
 

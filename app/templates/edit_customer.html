@@ -1,24 +1,20 @@
 {% extends "base.html" %}
-{% block title %}Register Customer — LoyaltyMonitor{% endblock %}
+{% block title %}Edit {{ customer.display_name }} — LoyaltyMonitor{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
   <div class="col-12 col-md-7 col-lg-5">
 
     <div class="d-flex align-items-center mb-3 gap-2">
-      <a href="{{ url_for('customer.list_customers') }}" class="btn btn-outline-secondary btn-sm">
+      <a href="{{ url_for('customer.customer_detail', customer_id=customer.id) }}" class="btn btn-outline-secondary btn-sm">
         <i class="fas fa-arrow-left"></i>
       </a>
-      <h4 class="mb-0"><i class="fas fa-user-plus me-2 text-primary"></i>Register Customer</h4>
+      <h4 class="mb-0"><i class="fas fa-user-pen me-2 text-primary"></i>Edit Customer</h4>
     </div>
 
     <div class="card shadow-sm border-0">
       <div class="card-body p-4">
-        <p class="text-muted small mb-4">
-          All fields are optional. A unique QR-code ID is always generated automatically.
-        </p>
-
-        <form method="POST" action="{{ url_for('customer.new_customer') }}" novalidate>
+        <form method="POST" action="{{ url_for('customer.edit_customer', customer_id=customer.id) }}" novalidate>
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
 
           <div class="mb-3">
@@ -28,9 +24,8 @@
               id="first_name"
               name="first_name"
               class="form-control"
-              placeholder="Maria"
               autocomplete="given-name"
-              value="{{ request.form.get('first_name', '') }}"
+              value="{{ request.form.get('first_name', customer.first_name or '') }}"
             />
           </div>
 
@@ -41,24 +36,21 @@
               id="last_name"
               name="last_name"
               class="form-control"
-              placeholder="Rossi"
               autocomplete="family-name"
-              value="{{ request.form.get('last_name', '') }}"
+              value="{{ request.form.get('last_name', customer.last_name or '') }}"
             />
           </div>
 
-          <div class="mb-4">
+          <div class="mb-3">
             <label for="email" class="form-label fw-semibold">Email <span class="text-muted fw-normal">(optional)</span></label>
             <input
               type="email"
               id="email"
               name="email"
               class="form-control"
-              placeholder="maria@example.com"
               autocomplete="email"
-              value="{{ request.form.get('email', '') }}"
+              value="{{ request.form.get('email', customer.email or '') }}"
             />
-            <div class="form-text">Used to send wallet pass links or receipts.</div>
           </div>
 
           <div class="mb-4">
@@ -68,19 +60,19 @@
               id="phone_number"
               name="phone_number"
               class="form-control"
-              placeholder="06 12 34 56 78"
               autocomplete="tel"
               inputmode="tel"
-              value="{{ request.form.get('phone_number', '') }}"
+              value="{{ request.form.get('phone_number', formatted_phone_number | default(customer.phone_number or '')) }}"
             />
             <div class="form-text">
               {{ config.get('phone_number_default_extension', '+33') }} is added automatically when omitted.
             </div>
           </div>
 
-          <div class="d-grid">
-            <button type="submit" class="btn btn-primary btn-lg fw-semibold">
-              <i class="fas fa-id-card me-2"></i>Create Loyalty Card
+          <div class="d-flex gap-2">
+            <a href="{{ url_for('customer.customer_detail', customer_id=customer.id) }}" class="btn btn-outline-secondary flex-grow-1">Cancel</a>
+            <button type="submit" class="btn btn-primary flex-grow-1 fw-semibold">
+              <i class="fas fa-floppy-disk me-2"></i>Save Changes
             </button>
           </div>
         </form>

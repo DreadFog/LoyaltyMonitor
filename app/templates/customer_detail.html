@@ -29,14 +29,23 @@
           {% if customer.email %}
           <div class="opacity-75 small"><i class="fas fa-envelope me-1"></i>{{ customer.email }}</div>
           {% endif %}
+          {% if customer.phone_number %}
+          <div class="opacity-75 small"><i class="fas fa-phone me-1"></i>{{ formatted_phone_number }}</div>
+          {% endif %}
           <div class="opacity-75 small font-monospace mt-1">
             <i class="fas fa-id-card me-1"></i>{{ customer.id }}
           </div>
         </div>
-        <a href="{{ url_for('customer.customer_qr', customer_id=customer.id) }}"
-           target="_blank" class="btn btn-light btn-sm flex-shrink-0" title="Open QR code">
-          <i class="fas fa-qrcode fa-lg"></i>
-        </a>
+        <div class="d-flex gap-2 flex-shrink-0">
+          <a href="{{ url_for('customer.edit_customer', customer_id=customer.id) }}"
+             class="btn btn-light btn-sm" title="Edit customer">
+            <i class="fas fa-pen me-1"></i>Edit
+          </a>
+          <a href="{{ url_for('customer.customer_qr', customer_id=customer.id) }}"
+             target="_blank" class="btn btn-light btn-sm" title="Open QR code">
+            <i class="fas fa-qrcode fa-lg"></i>
+          </a>
+        </div>
       </div>
 
       {# ── Per-track progress rows ── #}

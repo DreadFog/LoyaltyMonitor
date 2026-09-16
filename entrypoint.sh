@@ -34,12 +34,14 @@ python - << 'PYEOF'
 import os, sys
 sys.path.insert(0, "/app")
 from app import create_app
+from app import migrate_database
 from app.extensions import db
 from app.models import Admin
 
 app = create_app()
 with app.app_context():
     db.create_all()
+    migrate_database()
 
     admin_username = os.environ.get("ADMIN_USERNAME", "admin")
     admin_password = os.environ.get("ADMIN_PASSWORD")

@@ -6,6 +6,12 @@
 
 "use strict";
 
+function escapeHtml(value) {
+  const element = document.createElement("div");
+  element.textContent = value;
+  return element.innerHTML;
+}
+
 // ── CSRF ──────────────────────────────────────────────────────
 function getCsrfToken() {
   return document.querySelector('meta[name="csrf-token"]')?.content ?? "";

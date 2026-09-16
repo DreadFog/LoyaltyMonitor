@@ -43,6 +43,7 @@ class Customer(db.Model):
     email = db.Column(db.String(120), unique=True, nullable=True)
     first_name = db.Column(db.String(64), nullable=True)
     last_name = db.Column(db.String(64), nullable=True)
+    phone_number = db.Column(db.String(12), nullable=True)
     points = db.Column(db.Integer, nullable=False, default=0)
     # Per-track balances: {"medium": 5, "large": 3}
     # For single-track configs this is {} and `points` is used directly.

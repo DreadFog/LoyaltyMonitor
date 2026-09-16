@@ -1,8 +1,21 @@
 import os
 
 from flask import Flask
+from sqlalchemy import inspect, text
 
 from app.extensions import db, login_manager, csrf
+
+
+def migrate_database() -> None:
+    """Apply small, backward-compatible schema updates not handled by create_all."""
+    inspector = inspect(db.engine)
+    if "customers" not in inspector.get_table_names():
+        return
+
+    customer_columns = {column["name"] for column in inspector.get_columns("customers")}
+    if "phone_number" not in customer_columns:
+        db.session.execute(text("ALTER TABLE customers ADD COLUMN phone_number VARCHAR(12)"))
+        db.session.commit()
 
 
 def create_app() -> Flask:

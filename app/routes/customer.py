@@ -1,4 +1,6 @@
+import csv
 import io
+from datetime import datetime
 
 from flask import (
     Blueprint,
@@ -12,6 +14,7 @@ from flask import (
     current_app,
 )
 from flask_login import login_required
+from sqlalchemy import or_
 
 import qrcode
 import qrcode.constants
@@ -26,6 +29,9 @@ from app.loyalty import (
     get_all_track_status,
     get_available_rewards,
     get_combined_status_message,
+    format_phone_number,
+    get_phone_number_extension,
+    normalize_french_phone,
 )
 
 customer_bp = Blueprint("customer", __name__)
@@ -98,7 +104,57 @@ def _track_status_payload(config: dict, customer: Customer) -> dict:
 def list_customers():
     customers = Customer.query.order_by(Customer.created_at.desc()).all()
     config = _get_config()
-    return render_template("dashboard.html", customers=customers, config=config)
+    phone_extension = get_phone_number_extension(config)
+    formatted_phone_numbers = {
+        customer.id: format_phone_number(customer.phone_number, config)
+        for customer in customers
+    }
+    phone_search_values = {
+        customer.id: " ".join(filter(None, [
+            customer.phone_number,
+            "0" + customer.phone_number[len(phone_extension):]
+            if customer.phone_number and customer.phone_number.startswith(phone_extension)
+            else None,
+        ]))
+        for customer in customers
+    }
+    return render_template(
+        "dashboard.html",
+        customers=customers,
+        config=config,
+        formatted_phone_numbers=formatted_phone_numbers,
+        phone_search_values=phone_search_values,
+    )
+
+
+@customer_bp.route("/export.csv")
+@login_required
+def export_customers():
+    customers = Customer.query.order_by(Customer.created_at.desc()).all()
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "id", "first_name", "last_name", "email", "phone_number", "points", "registered_at"
+    ])
+    for customer in customers:
+        writer.writerow([
+            customer.id,
+            customer.first_name or "",
+            customer.last_name or "",
+            customer.email or "",
+            customer.phone_number or "",
+            customer.points,
+            customer.created_at.isoformat(),
+        ])
+
+    csv_bytes = io.BytesIO(("\ufeff" + output.getvalue()).encode("utf-8"))
+    filename = f"customers-{datetime.now().strftime('%Y-%m-%d')}.csv"
+    return send_file(
+        csv_bytes,
+        mimetype="text/csv; charset=utf-8",
+        as_attachment=True,
+        download_name=filename,
+    )
 
 
 @customer_bp.route("/scan")
@@ -108,27 +164,81 @@ def scan():
     return render_template("scan.html", config=config)
 
 
+@customer_bp.route("/search")
+@login_required
+def search_customers():
+    query = request.args.get("q", "").strip()
+    if len(query) < 3:
+        return jsonify({"customers": []})
+
+    config = _get_config()
+    phone_digits = "".join(character for character in query if character.isdigit())
+    if phone_digits.startswith("0"):
+        extension_digits = get_phone_number_extension(config).lstrip("+")
+        phone_digits = extension_digits + phone_digits[1:]
+
+    filters = [
+        Customer.first_name.ilike(f"%{query}%"),
+        Customer.last_name.ilike(f"%{query}%"),
+        Customer.email.ilike(f"%{query}%"),
+    ]
+    if phone_digits:
+        filters.append(Customer.phone_number.like(f"%{phone_digits}%"))
+
+    customers = (
+        Customer.query.filter(or_(*filters))
+        .order_by(Customer.last_name, Customer.first_name, Customer.created_at.desc())
+        .limit(10)
+        .all()
+    )
+    return jsonify({
+        "customers": [
+            {
+                "id": customer.id,
+                "name": customer.display_name,
+                "email": customer.email or "",
+                "phone_number": format_phone_number(customer.phone_number, config),
+                "url": url_for("customer.customer_detail", customer_id=customer.id),
+            }
+            for customer in customers
+        ]
+    })
+
+
 @customer_bp.route("/new", methods=["GET", "POST"])
 @login_required
 def new_customer():
+    config = _get_config()
     if request.method == "POST":
         email = request.form.get("email", "").strip() or None
         first_name = request.form.get("first_name", "").strip() or None
         last_name = request.form.get("last_name", "").strip() or None
+        try:
+            phone_number = normalize_french_phone(
+                request.form.get("phone_number", ""), config
+            )
+        except ValueError as exc:
+            flash(str(exc), "danger")
+            return render_template("new_customer.html", config=config)
 
         if email:
             if Customer.query.filter_by(email=email).first():
                 flash("A customer with this email already exists.", "danger")
-                return render_template("new_customer.html")
+                return render_template("new_customer.html", config=config)
 
-        customer = Customer(email=email, first_name=first_name, last_name=last_name)
+        customer = Customer(
+            email=email,
+            first_name=first_name,
+            last_name=last_name,
+            phone_number=phone_number,
+        )
         db.session.add(customer)
         db.session.commit()
 
         flash(f"Customer registered! ID: {customer.id}", "success")
         return redirect(url_for("customer.customer_detail", customer_id=customer.id))
 
-    return render_template("new_customer.html")
+    return render_template("new_customer.html", config=config)
 
 
 @customer_bp.route("/<customer_id>")
@@ -161,6 +271,53 @@ def customer_detail(customer_id: str):
         available_rewards=available_rewards,
         transactions=transactions,
         wallet_types=wallet_types,
+        formatted_phone_number=format_phone_number(customer.phone_number, config),
+    )
+
+
+@customer_bp.route("/<customer_id>/edit", methods=["GET", "POST"])
+@login_required
+def edit_customer(customer_id: str):
+    customer = db.get_or_404(Customer, customer_id)
+    config = _get_config()
+
+    if request.method == "POST":
+        email = request.form.get("email", "").strip() or None
+        first_name = request.form.get("first_name", "").strip() or None
+        last_name = request.form.get("last_name", "").strip() or None
+        try:
+            phone_number = normalize_french_phone(
+                request.form.get("phone_number", ""), config
+            )
+        except ValueError as exc:
+            flash(str(exc), "danger")
+            return render_template(
+                "edit_customer.html", customer=customer, config=config
+            )
+
+        if email and Customer.query.filter(
+            Customer.email == email,
+            Customer.id != customer.id,
+        ).first():
+            flash("A customer with this email already exists.", "danger")
+            return render_template(
+                "edit_customer.html", customer=customer, config=config
+            )
+
+        customer.email = email
+        customer.first_name = first_name
+        customer.last_name = last_name
+        customer.phone_number = phone_number
+        db.session.commit()
+
+        flash("Customer details updated.", "success")
+        return redirect(url_for("customer.customer_detail", customer_id=customer.id))
+
+    return render_template(
+        "edit_customer.html",
+        customer=customer,
+        config=config,
+        formatted_phone_number=format_phone_number(customer.phone_number, config),
     )
 
 

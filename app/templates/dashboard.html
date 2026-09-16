@@ -4,12 +4,29 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h4 class="mb-0"><i class="fas fa-users me-2 text-primary"></i>Customers</h4>
-  <a href="{{ url_for('customer.new_customer') }}" class="btn btn-primary btn-sm">
-    <i class="fas fa-user-plus me-1"></i>Register New
-  </a>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('customer.export_customers') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="fas fa-file-csv me-1"></i>Export CSV
+    </a>
+    <a href="{{ url_for('customer.new_customer') }}" class="btn btn-primary btn-sm">
+      <i class="fas fa-user-plus me-1"></i>Register New
+    </a>
+  </div>
 </div>
 
 {% if customers %}
+
+<div class="input-group mb-3">
+  <span class="input-group-text bg-white"><i class="fas fa-magnifying-glass text-muted"></i></span>
+  <input
+    type="search"
+    id="customer-search"
+    class="form-control"
+    placeholder="Search by name, email or phone"
+    aria-label="Search customers"
+    autocomplete="off"
+  />
+</div>
 
 {# ── Desktop table ── #}
 <div class="d-none d-md-block">
@@ -20,6 +37,7 @@
           <tr>
             <th>Name</th>
             <th>Email</th>
+            <th>Phone</th>
             <th class="text-center">Points</th>
             <th>Status</th>
             <th>Registered</th>
@@ -39,7 +57,9 @@
               {% set status.msg = rewards[0].status_template.format(remaining=remaining, points=c.points, points_required=req) if 'status_template' in rewards[0] else (remaining|string ~ ' pts left') %}
             {% endif %}
           {% endif %}
-          <tr>
+            <tr class="customer-record"
+              data-customer-search="{{ ((c.first_name or '') ~ ' ' ~ (c.last_name or '') ~ ' ' ~ (c.email or '')) | lower }}"
+              data-customer-phone="{{ phone_search_values[c.id] }}">
             <td>
               <a href="{{ url_for('customer.customer_detail', customer_id=c.id) }}" class="text-decoration-none fw-semibold">
                 {{ c.display_name }}
@@ -47,6 +67,7 @@
               <div class="text-muted small font-monospace">{{ c.id[:8] }}…</div>
             </td>
             <td class="text-muted small">{{ c.email or '—' }}</td>
+            <td class="text-muted small">{{ formatted_phone_numbers[c.id] or '—' }}</td>
             <td class="text-center">
               <span class="badge bg-primary fs-6 px-3 py-2">{{ c.points }}</span>
             </td>
@@ -74,7 +95,10 @@
 {# ── Mobile cards ── #}
 <div class="d-md-none">
   {% for c in customers %}
-  <a href="{{ url_for('customer.customer_detail', customer_id=c.id) }}" class="text-decoration-none">
+    <a href="{{ url_for('customer.customer_detail', customer_id=c.id) }}"
+      class="text-decoration-none customer-record"
+      data-customer-search="{{ ((c.first_name or '') ~ ' ' ~ (c.last_name or '') ~ ' ' ~ (c.email or '')) | lower }}"
+      data-customer-phone="{{ phone_search_values[c.id] }}">
     <div class="card mb-2 shadow-sm border-0">
       <div class="card-body d-flex align-items-center gap-3 py-3">
         <div class="customer-avatar flex-shrink-0">
@@ -83,6 +107,7 @@
         <div class="flex-grow-1 min-w-0">
           <div class="fw-semibold text-dark">{{ c.display_name }}</div>
           <div class="text-muted small">{{ c.email or c.id[:8] ~ '…' }}</div>
+          {% if c.phone_number %}<div class="text-muted small">{{ formatted_phone_numbers[c.id] }}</div>{% endif %}
         </div>
         <div class="text-end flex-shrink-0">
           <span class="badge bg-primary fs-6 px-3 py-2">{{ c.points }}</span>
@@ -96,6 +121,11 @@
   {% endfor %}
 </div>
 
+<div id="customer-search-empty" class="text-center py-5 text-muted d-none">
+  <i class="fas fa-magnifying-glass fa-2x mb-3 opacity-25"></i>
+  <p class="mb-0">No customers match this search.</p>
+</div>
+
 {% else %}
 <div class="text-center py-5 text-muted">
   <i class="fas fa-users fa-3x mb-3 opacity-25"></i>
@@ -105,4 +135,33 @@
   </a>
 </div>
 {% endif %}
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const searchInput = document.getElementById("customer-search");
+    if (!searchInput) return;
+
+    const records = Array.from(document.querySelectorAll(".customer-record"));
+    const emptyState = document.getElementById("customer-search-empty");
+
+    searchInput.addEventListener("input", function () {
+      const query = searchInput.value.trim().toLocaleLowerCase();
+      const normalizedPhoneQuery = query.replace(/[\s.()-]/g, "");
+      const searchActive = query.length >= 3;
+      let matchingCustomers = 0;
+
+      records.forEach(function (record) {
+        const matches = !searchActive
+          || record.dataset.customerSearch.includes(query)
+          || record.dataset.customerPhone.includes(normalizedPhoneQuery);
+        record.hidden = !matches;
+        if (matches && record.tagName === "TR") matchingCustomers += 1;
+      });
+
+      emptyState.classList.toggle("d-none", !searchActive || matchingCustomers > 0);
+    });
+  });
+</script>
 {% endblock %}

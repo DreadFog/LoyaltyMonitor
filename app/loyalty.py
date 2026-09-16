@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import Any
 
 
@@ -13,6 +14,55 @@ def load_config(config_path: str | None = None) -> dict[str, Any]:
         config_path = os.environ.get("LOYALTY_CONFIG_PATH", "config/pizzeria.json")
     with open(config_path, "r", encoding="utf-8") as fh:
         return json.load(fh)
+
+
+def get_phone_number_extension(config: dict) -> str:
+    """Return the configured international phone extension."""
+    extension = re.sub(r"\s", "", str(config.get("phone_number_default_extension", "+33")))
+    if not re.fullmatch(r"\+\d{1,2}", extension):
+        raise ValueError("phone_number_default_extension must start with + and contain 1 or 2 digits.")
+    return extension
+
+
+def normalize_french_phone(value: str, config: dict) -> str | None:
+    """Return a French phone number with the configured international extension."""
+    compact = re.sub(r"[\s.()-]", "", value.strip())
+    if not compact:
+        return None
+
+    extension = get_phone_number_extension(config)
+    if compact.startswith("0"):
+        compact = compact[1:]
+    if re.fullmatch(r"[1-9]\d{8}", compact):
+        return extension + compact
+    if re.fullmatch(re.escape(extension) + r"[1-9]\d{8}", compact):
+        return compact
+    raise ValueError(
+        f"Phone number must contain 9 French digits, optionally prefixed with 0 or {extension}."
+    )
+
+
+def format_phone_number(phone_number: str | None, config: dict) -> str:
+    """Group the national portion of a canonical phone number for display."""
+    if not phone_number:
+        return ""
+    try:
+        group_size = int(config.get("phone_number_group_size", 2))
+    except (TypeError, ValueError):
+        group_size = 2
+    if group_size < 1:
+        group_size = 2
+
+    extension = get_phone_number_extension(config)
+    national_number = phone_number[len(extension):] if phone_number.startswith(extension) else phone_number
+    first_group_size = len(national_number) % group_size or group_size
+    groups = [national_number[:first_group_size]]
+    groups.extend(
+        national_number[index:index + group_size]
+        for index in range(first_group_size, len(national_number), group_size)
+    )
+    prefix = f"{extension} " if phone_number.startswith(extension) else ""
+    return prefix + " ".join(groups)
 
 
 # ── Track helpers ─────────────────────────────────────────────────────────────
