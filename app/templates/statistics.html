@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Key Statistics — LoyaltyMonitor{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" crossorigin="anonymous"></script>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <div>
+    <h4 class="mb-1"><i class="fas fa-chart-column me-2 text-primary"></i>Key Statistics</h4>
+    <div class="text-muted small">{{ start_date }} to {{ end_date }}</div>
+  </div>
+  <div class="btn-group" role="group" aria-label="Date range">
+    {% for value, label in [('week', 'Last week'), ('month', 'Last month'), ('quarter', '3 months'), ('year', 'Last year')] %}
+    <a href="{{ url_for('customer.statistics', preset=value) }}"
+       class="btn btn-sm {% if preset == value %}btn-primary{% else %}btn-outline-primary{% endif %}">{{ label }}</a>
+    {% endfor %}
+  </div>
+</div>
+
+<form method="GET" class="card shadow-sm border-0 mb-3">
+  <div class="card-body row g-2 align-items-end">
+    <div class="col-sm-4">
+      <label for="start" class="form-label small fw-semibold mb-1">Start date</label>
+      <input type="date" id="start" name="start" class="form-control" value="{{ start_date }}" required />
+    </div>
+    <div class="col-sm-4">
+      <label for="end" class="form-label small fw-semibold mb-1">End date</label>
+      <input type="date" id="end" name="end" class="form-control" value="{{ end_date }}" required />
+    </div>
+    <div class="col-sm-4"><button type="submit" class="btn btn-primary w-100"><i class="fas fa-filter me-1"></i>Apply range</button></div>
+  </div>
+</form>
+
+<div class="row g-3 mb-3">
+  <div class="col-sm-6"><div class="card shadow-sm border-0 h-100"><div class="card-body"><div class="text-muted small text-uppercase">Orders credited</div><div class="fs-2 fw-bold text-primary">{{ total_orders }}</div></div></div></div>
+  <div class="col-sm-6"><div class="card shadow-sm border-0 h-100"><div class="card-body"><div class="text-muted small text-uppercase">Active customers</div><div class="fs-2 fw-bold text-success">{{ active_customers }}</div></div></div></div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-6">
+    <div class="card shadow-sm border-0 h-100">
+      <div class="card-header bg-light"><h6 class="mb-0"><i class="fas fa-users me-2"></i>Most Frequent Customers</h6></div>
+      {% if top_customers %}<div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>Customer</th><th class="text-end">Orders</th>{% if show_points %}<th class="text-end">Points</th>{% endif %}</tr></thead><tbody>{% for customer in top_customers %}<tr><td class="fw-semibold">{{ customer.name }}</td><td class="text-end">{{ customer.orders }}</td>{% if show_points %}<td class="text-end">{{ customer.points }}</td>{% endif %}</tr>{% endfor %}</tbody></table></div>{% else %}<div class="card-body text-muted">No credited orders in this period.</div>{% endif %}
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card shadow-sm border-0 h-100">
+      <div class="card-header bg-light"><h6 class="mb-0"><i class="fas fa-pizza-slice me-2"></i>Most Common Orders</h6></div>
+      {% if common_orders %}<div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>Order</th><th>Fidelity type</th><th class="text-end">Orders</th></tr></thead><tbody>{% for order in common_orders %}<tr><td class="fw-semibold">{{ order.name }}</td><td><span class="badge bg-secondary">{{ order.track_name }}</span></td><td class="text-end">{{ order.orders }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="card-body text-muted">No credited orders in this period.</div>{% endif %}
+    </div>
+  </div>
+  <div class="col-12">
+    <div class="card shadow-sm border-0">
+      <div class="card-header bg-light"><h6 class="mb-0"><i class="fas fa-clock me-2"></i>Average Day</h6><div class="small text-muted mt-1">Order volume by half-hour across the selected period.</div></div>
+      <div class="card-body"><div style="height: 300px"><canvas id="timelineChart" aria-label="Orders by time of day"></canvas></div></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  const timeline = {{ timeline_data | tojson }};
+  new Chart(document.getElementById("timelineChart"), {
+    type: "bar",
+    data: {
+      labels: timeline.map(item => item.label),
+      datasets: [{ label: "Orders", data: timeline.map(item => item.orders), backgroundColor: "#0d6efd", borderRadius: 3 }]
+    },
+    options: {
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { x: { ticks: { maxTicksLimit: 12 } }, y: { beginAtZero: true, ticks: { precision: 0 } } }
+    }
+  });
+</script>
+{% endblock %}

@@ -15,6 +15,8 @@ class Admin(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(64), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
+    # 'admin' can manage staff and customer records; 'operator' handles loyalty work.
+    role = db.Column(db.String(20), nullable=False, default="admin")
     # UI preference: 'mobile' or 'desktop'
     display_mode = db.Column(db.String(10), nullable=False, default="desktop")
 
@@ -23,6 +25,10 @@ class Admin(UserMixin, db.Model):
 
     def check_password(self, password: str) -> bool:
         return check_password_hash(self.password_hash, password)
+
+    @property
+    def is_admin(self) -> bool:
+        return self.role == "admin"
 
 
 @login_manager.user_loader

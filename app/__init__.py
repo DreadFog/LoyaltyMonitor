@@ -9,12 +9,20 @@ from app.extensions import db, login_manager, csrf
 def migrate_database() -> None:
     """Apply small, backward-compatible schema updates not handled by create_all."""
     inspector = inspect(db.engine)
-    if "customers" not in inspector.get_table_names():
-        return
+    table_names = inspector.get_table_names()
+    if "customers" in table_names:
+        customer_columns = {column["name"] for column in inspector.get_columns("customers")}
+        if "phone_number" not in customer_columns:
+            db.session.execute(text("ALTER TABLE customers ADD COLUMN phone_number VARCHAR(12)"))
 
-    customer_columns = {column["name"] for column in inspector.get_columns("customers")}
-    if "phone_number" not in customer_columns:
-        db.session.execute(text("ALTER TABLE customers ADD COLUMN phone_number VARCHAR(12)"))
+    if "admins" in table_names:
+        admin_columns = {column["name"] for column in inspector.get_columns("admins")}
+        if "role" not in admin_columns:
+            db.session.execute(
+                text("ALTER TABLE admins ADD COLUMN role VARCHAR(20) NOT NULL DEFAULT 'admin'")
+            )
+
+    if "customers" in table_names or "admins" in table_names:
         db.session.commit()
 
 

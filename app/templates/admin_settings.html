@@ -60,6 +60,60 @@
       </div>
     </div>
 
+    {# ── Create operator ── #}
+    <div class="card shadow-sm border-0 mb-3">
+      <div class="card-header bg-light">
+        <h6 class="mb-0"><i class="fas fa-user-plus me-2"></i>Create Operator</h6>
+      </div>
+      <div class="card-body">
+        <form method="POST" action="{{ url_for('admin.create_operator') }}" novalidate>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+          <div class="mb-3">
+            <label for="operator_username" class="form-label fw-semibold">Username</label>
+            <input type="text" id="operator_username" name="username" class="form-control" maxlength="64" required />
+          </div>
+          <div class="mb-3">
+            <label for="operator_password" class="form-label fw-semibold">Password</label>
+            <input type="password" id="operator_password" name="password" class="form-control" minlength="8" required />
+            <div class="form-text">Minimum 8 characters.</div>
+          </div>
+          <div class="mb-4">
+            <label for="operator_role" class="form-label fw-semibold">Role</label>
+            <select id="operator_role" name="role" class="form-select">
+              <option value="operator" selected>Operator</option>
+              <option value="admin">Administrator</option>
+            </select>
+            <div class="form-text">Operators can register customers and perform loyalty actions, but cannot edit or delete customers.</div>
+          </div>
+          <button type="submit" class="btn btn-primary">
+            <i class="fas fa-user-plus me-1"></i>Create Account
+          </button>
+        </form>
+      </div>
+    </div>
+
+    {# ── Staff accounts ── #}
+    <div class="card shadow-sm border-0 mb-3">
+      <div class="card-header bg-light d-flex justify-content-between align-items-center">
+        <h6 class="mb-0"><i class="fas fa-users-gear me-2"></i>Operators & Administrators</h6>
+        <span class="badge bg-secondary">{{ staff_members | length }}</span>
+      </div>
+      <ul class="list-group list-group-flush">
+        {% for staff_member in staff_members %}
+        <li class="list-group-item d-flex justify-content-between align-items-center">
+          <div class="min-w-0">
+            <i class="fas {% if staff_member.is_admin %}fa-user-shield text-primary{% else %}fa-user text-secondary{% endif %} me-2"></i>
+            <span class="fw-semibold">{{ staff_member.username }}</span>
+            {% if staff_member.id == current_user.id %}<span class="text-muted small ms-1">(you)</span>{% endif %}
+          </div>
+          <span class="badge {% if staff_member.is_admin %}bg-primary{% else %}bg-secondary{% endif %}">
+            {{ 'Administrator' if staff_member.is_admin else 'Operator' }}
+          </span>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+
     {# ── Loyalty config overview ── #}
     {% if config %}
     <div class="card shadow-sm border-0 mb-3">

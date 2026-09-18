@@ -1,6 +1,6 @@
 import csv
 import io
-from datetime import datetime
+from datetime import datetime, time, timedelta
 
 from flask import (
     Blueprint,
@@ -21,6 +21,7 @@ import qrcode.constants
 
 from app.extensions import db
 from app.models import Customer, PointTransaction, WalletCard
+from app.permissions import admin_required
 from app.loyalty import (
     load_config,
     get_config_tracks,
@@ -241,6 +242,103 @@ def new_customer():
     return render_template("new_customer.html", config=config)
 
 
+@customer_bp.route("/statistics")
+@login_required
+@admin_required
+def statistics():
+    config = _get_config()
+    today = datetime.now().date()
+    preset = request.args.get("preset", "month")
+    preset_days = {"week": 7, "month": 30, "quarter": 90, "year": 365}
+
+    start_value = request.args.get("start", "")
+    end_value = request.args.get("end", "")
+    try:
+        if start_value and end_value:
+            start_date = datetime.strptime(start_value, "%Y-%m-%d").date()
+            end_date = datetime.strptime(end_value, "%Y-%m-%d").date()
+            preset = "custom"
+        else:
+            days = preset_days.get(preset, preset_days["month"])
+            start_date = today - timedelta(days=days - 1)
+            end_date = today
+            preset = preset if preset in preset_days else "month"
+    except ValueError:
+        flash("Use valid start and end dates.", "warning")
+        start_date = today - timedelta(days=29)
+        end_date = today
+        preset = "month"
+
+    if end_date < start_date:
+        flash("The end date must be on or after the start date.", "warning")
+        start_date, end_date, preset = today - timedelta(days=29), today, "month"
+
+    start_at = datetime.combine(start_date, time.min)
+    end_at = datetime.combine(end_date + timedelta(days=1), time.min)
+    transactions = PointTransaction.query.filter(
+        PointTransaction.created_at >= start_at,
+        PointTransaction.created_at < end_at,
+        PointTransaction.points_delta > 0,
+    ).all()
+
+    actions = {action["id"]: action for action in config.get("actions", [])}
+    customers = {}
+    orders = {}
+    timeline = [0] * 48
+    total_orders = 0
+
+    for transaction in transactions:
+        action = actions.get(transaction.action_id)
+        if not action or action.get("points", 0) <= 0:
+            continue
+
+        quantity = transaction.points_delta // action["points"]
+        if quantity <= 0:
+            continue
+
+        total_orders += quantity
+        customer = transaction.customer
+        customers.setdefault(customer.id, {
+            "name": customer.display_name,
+            "orders": 0,
+            "points": 0,
+        })
+        customers[customer.id]["orders"] += quantity
+        customers[customer.id]["points"] += transaction.points_delta
+
+        order = orders.setdefault(action["id"], {
+            "name": action["name"],
+            "track_name": action.get("track_id", "Default").replace("_", " ").title(),
+            "orders": 0,
+            "points": 0,
+        })
+        order["orders"] += quantity
+        order["points"] += transaction.points_delta
+
+        timeline[transaction.created_at.hour * 2 + transaction.created_at.minute // 30] += quantity
+
+    top_customers = sorted(customers.values(), key=lambda item: item["orders"], reverse=True)[:10]
+    common_orders = sorted(orders.values(), key=lambda item: item["orders"], reverse=True)
+    timeline_data = [
+        {"label": f"{slot // 2:02d}:{'30' if slot % 2 else '00'}", "orders": volume}
+        for slot, volume in enumerate(timeline)
+    ]
+
+    return render_template(
+        "statistics.html",
+        config=config,
+        preset=preset,
+        start_date=start_date.isoformat(),
+        end_date=end_date.isoformat(),
+        show_points=any(action.get("points") != 1 for action in actions.values()),
+        total_orders=total_orders,
+        active_customers=len(customers),
+        top_customers=top_customers,
+        common_orders=common_orders,
+        timeline_data=timeline_data,
+    )
+
+
 @customer_bp.route("/<customer_id>")
 @login_required
 def customer_detail(customer_id: str):
@@ -277,6 +375,7 @@ def customer_detail(customer_id: str):
 
 @customer_bp.route("/<customer_id>/edit", methods=["GET", "POST"])
 @login_required
+@admin_required
 def edit_customer(customer_id: str):
     customer = db.get_or_404(Customer, customer_id)
     config = _get_config()
@@ -526,6 +625,7 @@ def cashout(customer_id: str):
 
 @customer_bp.route("/<customer_id>/delete", methods=["POST"])
 @login_required
+@admin_required
 def delete_customer(customer_id: str):
     customer = db.get_or_404(Customer, customer_id)
     customer_name = customer.display_name

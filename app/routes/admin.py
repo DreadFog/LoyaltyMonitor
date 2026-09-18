@@ -3,19 +3,51 @@ from flask_login import login_required, current_user
 
 from app.extensions import db
 from app.loyalty import load_config
+from app.models import Admin
+from app.permissions import admin_required
 
 admin_bp = Blueprint("admin", __name__)
 
 
 @admin_bp.route("/settings")
 @login_required
+@admin_required
 def settings():
     config = None
     try:
         config = load_config(current_app.config["LOYALTY_CONFIG_PATH"])
     except Exception as exc:
         flash(f"Could not load loyalty configuration: {exc}", "warning")
-    return render_template("admin_settings.html", config=config)
+    staff_members = Admin.query.order_by(Admin.role, Admin.username).all()
+    return render_template(
+        "admin_settings.html", config=config, staff_members=staff_members
+    )
+
+
+@admin_bp.route("/operators", methods=["POST"])
+@login_required
+@admin_required
+def create_operator():
+    username = request.form.get("username", "").strip()
+    password = request.form.get("password", "")
+    role = request.form.get("role", "operator")
+
+    if not username:
+        flash("Username is required.", "danger")
+    elif len(password) < 8:
+        flash("Password must be at least 8 characters.", "danger")
+    elif role not in {"admin", "operator"}:
+        flash("Invalid role.", "danger")
+    elif Admin.query.filter_by(username=username).first():
+        flash("That username is already in use.", "danger")
+    else:
+        operator = Admin(username=username, role=role)
+        operator.set_password(password)
+        db.session.add(operator)
+        db.session.commit()
+        flash(f"{role.capitalize()} '{username}' created.", "success")
+
+    return redirect(url_for("admin.settings"))
 
 
 @admin_bp.route("/toggle-display", methods=["POST"])
