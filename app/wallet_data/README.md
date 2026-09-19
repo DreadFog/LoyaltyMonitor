@@ -55,7 +55,7 @@ This directory holds sensitive wallet provider credentials. Files here are **NOT
 8. **Create the Loyalty Class** (one-time)
    - On first deployment, run:
      ```bash
-     docker exec loyaltymonitor-web-1 flask shell
+   docker exec loyaltymonitor-web flask shell
      >>> from app import create_app
      >>> from app.wallet import get_google_wallet_service
      >>> app = create_app()

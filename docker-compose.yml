@@ -1,8 +1,11 @@
 services:
   web:
+    container_name: loyaltymonitor-web
     build: .
-    ports:
-      - "5020:5000"
+    # ports:
+    #   - "5020:5000"
+    networks:
+      - internal_network
     env_file:
       - .env
     depends_on:
@@ -14,11 +17,14 @@ services:
     restart: unless-stopped
 
   db:
+    container_name: loyaltymonitor-db
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-loyalty_db}
       POSTGRES_USER: ${POSTGRES_USER:-loyalty}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-loyaltypass}
+    networks:
+      - internal_network
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -30,3 +36,7 @@ services:
 
 volumes:
   postgres_data:
+
+networks:
+  internal_network:
+    external: true
